@@ -1,13 +1,14 @@
-var fs = require('fs');
-var del = require('del');
-var gulp = require('gulp');
-var rev = require('gulp-rev');
 var Elixir = require('laravel-elixir');
-var vinylPaths = require('vinyl-paths');
-var parsePath  = require('parse-filepath');
-
 var publicPath  = Elixir.config.publicPath;
 
+var fs;
+var del;
+var glob;
+var gulp;
+var rev;
+var vinylPaths;
+var parsePath;
+var revReplace;
 
 /*
  |----------------------------------------------------------------
@@ -23,6 +24,8 @@ var publicPath  = Elixir.config.publicPath;
 Elixir.extend('version', function(src, buildPath) {
     var paths = prepGulpPaths(src, buildPath);
 
+    loadPlugins();
+
     new Elixir.Task('version', function() {
         var files = vinylPaths();
         var manifest = paths.output.baseDir + '/rev-manifest.json';
@@ -31,11 +34,16 @@ Elixir.extend('version', function(src, buildPath) {
 
         emptyBuildPathFiles(paths.output.baseDir, manifest);
 
+        // We need to remove the publicPath from the output base to get the
+        // correct prefix path.
+        var filePathPrefix = paths.output.baseDir.replace(publicPath, '').replace('\\','/') + '/';
+
         return (
             gulp.src(paths.src.path, { base: './' + publicPath })
             .pipe(gulp.dest(paths.output.baseDir))
             .pipe(files)
             .pipe(rev())
+            .pipe(revReplace({prefix: filePathPrefix}))
             .pipe(gulp.dest(paths.output.baseDir))
             .pipe(rev.manifest())
             .pipe(gulp.dest(paths.output.baseDir))
@@ -43,38 +51,49 @@ Elixir.extend('version', function(src, buildPath) {
                 // We'll get rid of the duplicated file that
                 // usually gets put in the "build" folder,
                 // alongside the suffixed version.
-                del(files.paths, { force: true });
+                del(files.paths.filter(function(file) {
+                    return fs.lstatSync(file).isFile();
+                }), { force: true });
 
                 // We'll also copy over relevant sourcemap files.
                 copyMaps(paths.src.path, paths.output.baseDir);
             })
         );
     })
-    .watch(paths.src.path)
+    .watch(paths.src.path);
 });
-
 
 /**
  * Prep the Gulp src and output paths.
  *
- * @param  {string|array} src
+ * @param  {string|Array} src
  * @param  {string|null}  buildPath
- * @return {object}
+ * @return {GulpPaths}
  */
 var prepGulpPaths = function(src, buildPath) {
     src = Array.isArray(src) ? src : [src];
+    buildPath = buildPath || Elixir.config.get('public.versioning.buildFolder')
 
-    return new Elixir.GulpPaths()
-        .src(src, config.publicPath)
-        .output(buildPath || config.get('public.versioning.buildFolder'));
+    var paths = new Elixir.GulpPaths()
+        .src(src, Elixir.config.publicPath)
+        .output(buildPath);
+
+    // We've no interested in tracking the
+    // build directory, so we'll always
+    // exclude it from the src set.
+    paths.src.path = paths.src.path.concat([
+        '!'+buildPath,
+        '!'+buildPath+'/**'
+    ]);
+
+    return paths;
 };
-
 
 /**
  * Empty all relevant files from the build directory.
  *
- * @param  {string} buildPath
- * @param  {string} manifest
+ * @param {string} buildPath
+ * @param {string} manifest
  */
 var emptyBuildPathFiles = function(buildPath, manifest) {
     fs.stat(manifest, function(err, stat) {
@@ -88,32 +107,46 @@ var emptyBuildPathFiles = function(buildPath, manifest) {
     });
 };
 
-
 /**
  * Copy source maps to the build directory.
  *
- * @param  {string} src
- * @param  {string} buildPath
- * @return {object}
+ * @param {string} src
+ * @param {string} buildPath
  */
 var copyMaps = function(src, buildPath) {
-    // We'll first get any files from the src
-    // array that have companion .map files.
-    var mappings = [];
-
     src.forEach(function(file) {
-        var map = file + '.map';
+        // We'll first get any files from the src
+        // array that have companion .map files.
 
-        if (fs.existsSync(map)) {
-            mappings.push(map);
-        }
+        glob(file, {}, function(error, files) {
+            if (error) return;
+
+            files
+                .filter(function(file) {
+                    return fs.existsSync(file + '.map');
+                })
+                .forEach(function(file) {
+                    // We will loop over this files array, and
+                    // copy each map to the build directory.
+                    var map = file.replace(publicPath, buildPath);
+
+                    gulp.src(file + '.map').pipe(gulp.dest(parsePath(map).dirname));
+                });
+        });
     });
+};
 
-    // And then we'll loop over this mapping array
-    // and copy each over to the build directory.
-    mappings.forEach(function(mapping) {
-        var map = mapping.replace(publicPath, buildPath);
 
-        gulp.src(mapping).pipe(gulp.dest(parsePath(map).dirname));
-    });
+/**
+ * Load the required Gulp plugins on demand.
+ */
+var loadPlugins = function () {
+    fs = require('fs');
+    del = require('del');
+    glob = require('glob');
+    gulp = require('gulp');
+    rev = require('gulp-rev');
+    vinylPaths = require('vinyl-paths');
+    parsePath  = require('parse-filepath');
+    revReplace = require('gulp-rev-replace');
 };

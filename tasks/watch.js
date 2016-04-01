@@ -1,7 +1,7 @@
 var gulp = require('gulp');
-var _ = require('underscore');
 var Elixir = require('laravel-elixir');
 
+var batch = Elixir.Plugins.batch;
 
 /*
  |----------------------------------------------------------------
@@ -13,31 +13,28 @@ var Elixir = require('laravel-elixir');
  | command. This way, you can auto-compile on each save!
  |
  */
+
 gulp.task('watch', function() {
-    var tasks = _.sortBy(Elixir.tasks, 'name');
+    initBrowserify();
 
-    // Browserify uses a special watcher, so we'll
-    // hook into that option, only for gulp watch.
+    Elixir.tasks.forEach(function(task) {
+        var batchOptions = Elixir.config.batchOptions;
 
-    if (_.contains(_.pluck(tasks, 'name'), 'browserify')) {
-        Elixir.config.js.browserify.watchify = true;
+        if (task.hasWatchers()) {
+            gulp.watch(task.watchers, { interval: 1000 }, batch(batchOptions, function(events) {
+                events.on('end', gulp.start(task.name));
+            }));
+        }
+    });
+});
+
+/**
+ * Determine if Browserify is included in the list.
+ */
+var initBrowserify = function() {
+    if (Elixir.tasks.has('browserify')) {
+        Elixir.config.js.browserify.watchify.enabled = true;
 
         gulp.start('browserify');
     }
-
-    tasks
-        .filter(function(task, index) {
-            if ( ! task.watch || (task.category != 'default')) {
-                return false;
-            }
-
-            if (index > 0) {
-                return task.name !== tasks[index - 1].name;
-            }
-
-            return true;
-        })
-        .forEach(function(task) {
-            gulp.watch(task.watchers, [task.name]);
-        });
-});
+};

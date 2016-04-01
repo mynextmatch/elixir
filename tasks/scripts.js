@@ -4,7 +4,6 @@ var Elixir = require('laravel-elixir');
 var $ = Elixir.Plugins;
 var config = Elixir.config;
 
-
 /*
  |----------------------------------------------------------------
  | JavaScript File Concatenation
@@ -26,7 +25,6 @@ Elixir.extend('scripts', function(scripts, output, baseDir) {
     .ignore(paths.output.path);
 });
 
-
 Elixir.extend('scriptsIn', function(baseDir, output) {
     var paths = prepGulpPaths('**/*.js', baseDir, output);
 
@@ -37,24 +35,22 @@ Elixir.extend('scriptsIn', function(baseDir, output) {
     .ignore(paths.output.path);
 });
 
-
 Elixir.extend('babel', function(scripts, output, baseDir, options) {
     var paths = prepGulpPaths(scripts, baseDir, output);
 
     new Elixir.Task('babel', function() {
         var babelOptions = options || config.js.babel.options;
 
-        return gulpTask.call(this, paths, babelOptions)
+        return gulpTask.call(this, paths, babelOptions);
     })
     .watch(paths.src.path)
     .ignore(paths.output.path);
 });
 
-
 /**
  * Trigger the Gulp task logic.
  *
- * @param {object}      paths
+ * @param {GulpPaths}   paths
  * @param {object|null} babel
  */
 var gulpTask = function(paths, babel) {
@@ -66,20 +62,24 @@ var gulpTask = function(paths, babel) {
         .pipe($.if(config.sourcemaps, $.sourcemaps.init()))
         .pipe($.concat(paths.output.name))
         .pipe($.if(babel, $.babel(babel)))
-        .pipe($.if(config.production, $.uglify()))
+        .on('error', function(e) {
+            new Elixir.Notification().error(e, 'Babel Compilation Failed!');
+            this.emit('end');
+        })
+        .pipe($.if(config.production, $.uglify(config.js.uglify.options)))
         .pipe($.if(config.sourcemaps, $.sourcemaps.write('.')))
         .pipe(gulp.dest(paths.output.baseDir))
         .pipe(new Elixir.Notification('Scripts Merged!'))
     );
 };
 
-
 /**
  * Prep the Gulp src and output paths.
  *
- * @param {string|array} src
- * @param {string|null}  baseDir
- * @param {string|null}  output
+ * @param  {string|Array} src
+ * @param  {string|null}  baseDir
+ * @param  {string|null}  output
+ * @return {GulpPaths}
  */
 var prepGulpPaths = function(src, baseDir, output) {
     return new Elixir.GulpPaths()

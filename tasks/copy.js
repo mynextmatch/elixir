@@ -3,7 +3,6 @@ var Elixir = require('laravel-elixir');
 
 var $ = Elixir.Plugins;
 
-
 /*
  |----------------------------------------------------------------
  | Copying
@@ -23,7 +22,7 @@ Elixir.extend('copy', function(src, output) {
 
         return (
             gulp
-            .src(paths.src.path)
+            .src(paths.src.path, { dot: true })
             .pipe($.if(! paths.output.isDir, $.rename(paths.output.name)))
             .pipe(gulp.dest(paths.output.baseDir))
         );

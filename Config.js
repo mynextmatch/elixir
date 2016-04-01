@@ -1,6 +1,7 @@
 var p = require('path');
 var gutils = require('gulp-util');
 
+var production = gutils.env.production || process.env.NODE_ENV === 'production';
 
 /*
  |----------------------------------------------------------------
@@ -21,29 +22,16 @@ var config = {
 
     /*
      |----------------------------------------------------------------
-     | Tasks
-     |----------------------------------------------------------------
-     |
-     | The tasks array stores all tasks that should be executed each
-     | time you trigger Gulp from the command line. Generally you
-     | won't need to modify this but it's an option if needed.
-     |
-     */
-
-    tasks: [],
-
-    /*
-     |----------------------------------------------------------------
      | Production Mode
      |----------------------------------------------------------------
      |
      | Elixir will trigger certain actions, dependent upon this flag.
-     | You may "turn on" this mode by triggering "gulp --production".
-     | This will enable such things, like CSS and JS minification.
+     | You may enable this mode by triggering "gulp --production",
+     | enabling things like CSS and JS minification. EasyPeasy!
      |
      */
 
-    production: !! gutils.env.production,
+    production: production,
 
     /*
      |----------------------------------------------------------------
@@ -86,6 +74,19 @@ var config = {
 
     /*
      |----------------------------------------------------------------
+     | View Path
+     |----------------------------------------------------------------
+     |
+     | Very likely, you will never need/want to modify this property.
+     | However, for the instances where your app's views directory
+     | is located in a different spot, please modify as needed.
+     |
+     */
+
+    viewPath: 'resources/views',
+
+    /*
+     |----------------------------------------------------------------
      | Sourcemaps
      |----------------------------------------------------------------
      |
@@ -95,7 +96,24 @@ var config = {
      |
      */
 
-    sourcemaps: true,
+    sourcemaps: ! gutils.env.production,
+
+    /*
+     |----------------------------------------------------------------
+     | File System Event Batching
+     |----------------------------------------------------------------
+     |
+     | You likely won't need to modify this object. That said, should
+     | you need to, these settings are exclusive to the watch task.
+     | They set the limit and timeout for running batch-updates.
+     |
+     */
+
+    batchOptions: {
+        // https://github.com/floatdrop/gulp-batch#batchoptions-callback-errorhandler
+        limit: undefined,
+        timeout: 1000
+    },
 
     css: {
 
@@ -141,9 +159,25 @@ var config = {
 
             // https://www.npmjs.com/package/gulp-autoprefixer#api
             options:  {
-                browsers: ['last 2 versions'],
+                browsers: ['> 1%'],
                 cascade: false
             }
+        },
+
+        /*
+         |----------------------------------------------------------------
+         | CSS3 Minification
+         |----------------------------------------------------------------
+         |
+         | When running Gulp with the production flag, any CSS will
+         | automatically be minified. This offers the benefit of
+         | reduced file sizes. Adjust any plugin option here.
+         |
+         */
+
+        minifier: {
+            // https://github.com/jakubpawlowicz/clean-css#how-to-use-clean-css-api
+            pluginOptions: {}
         },
 
         /*
@@ -162,9 +196,10 @@ var config = {
 
             // https://github.com/sass/node-sass#options
             pluginOptions: {
-                outputStyle: gutils.env.production
+                outputStyle: production
                     ? 'compressed'
-                    : 'nested'
+                    : 'nested',
+                precision: 10
             }
         },
 
@@ -229,8 +264,26 @@ var config = {
         babel: {
             // https://www.npmjs.com/package/gulp-babel#babel-options
             options: {
-                stage: 2,
-                compact: false
+                presets: ['es2015', 'react']
+            }
+        },
+
+        /*
+         |----------------------------------------------------------------
+         | UglifyJS Parser/Compressor/Beautifier
+         |----------------------------------------------------------------
+         |
+         | UglifyJS is a JavaScript parser/compressor/beautifier.
+         | It'll minify your JavaScript with ease and has an option to
+         | mangle your code.
+         |
+         */
+
+        uglify: {
+            options: {
+                compress: {
+                    drop_console: true
+                }
             }
         },
 
@@ -247,7 +300,14 @@ var config = {
 
         browserify: {
             // https://www.npmjs.com/package/browserify#usage
-            options: {},
+            options: {
+                cache: {},
+                packageCache: {}
+            },
+
+            plugins: [],
+
+            externals: [],
 
             transformers: [
                 {
@@ -255,8 +315,7 @@ var config = {
 
                     // https://www.npmjs.com/package/gulp-babel#babel-options
                     options: {
-                        stage: 2,
-                        compact: false
+                        presets: ['es2015', 'react']
                     }
                 },
 
@@ -266,7 +325,14 @@ var config = {
                     // https://www.npmjs.com/package/partialify
                     options: {}
                 }
-            ]
+            ],
+
+            watchify: {
+                enabled: false,
+
+                // https://www.npmjs.com/package/watchify#usage
+                options: {}
+            }
         },
 
         /*
@@ -295,42 +361,29 @@ var config = {
          | PHPUnit Autotesting
          |----------------------------------------------------------------
          |
-         | Want to automatically trigger your PHPUnit tests. Not a prob!
-         | This object stores the defaults for the path to your tests
-         | folder, as well as any "gulp-phpunit" specific options.
+         | Want to automatically trigger your PHPUnit tests. Not a problem.
+         | This object stores your default PHPUnit directory path. For a
+         | custom command, you may use the second arg to mix.phpUnit.
          |
          */
 
         phpUnit: {
-            path: 'tests',
-
-            // https://www.npmjs.com/package/gulp-phpunit#api
-            options: {
-                debug: true,
-                notify: true
-            }
+            path: 'tests'
         },
-
 
         /*
          |----------------------------------------------------------------
          | PHPSpec Autotesting
          |----------------------------------------------------------------
          |
-         | Want to automatically trigger your PHPSpec tests. Not a prob!
-         | This object stores the defaults for the path to your specs
-         | folder, as well as any "gulp-phpspec" specific options.
+         | Want to automatically trigger your PHPSpec tests. Not a problem.
+         | This object stores your default PHPSpec directory path. For a
+         | custom command, you may use the second arg to mix.phpSpec.
          |
          */
 
         phpSpec: {
-            path: 'spec',
-
-            // https://www.npmjs.com/package/gulp-phpspec#api
-            options: {
-                verbose: 'v',
-                notify: true
-            }
+            path: 'spec'
         }
     },
 
@@ -347,10 +400,27 @@ var config = {
 
     versioning: {
         buildFolder: 'build'
+    },
+
+    /*
+     |----------------------------------------------------------------
+     | Browsersync
+     |----------------------------------------------------------------
+     |
+     | Want to have your browser refresh instantly upon changing a bit
+     | of Sass or modifying a view? With Elixir, it has never been
+     | easier. This contains default options for the extension.
+     |
+     */
+
+    browserSync: {
+        // http://www.browsersync.io/docs/options/
+        proxy: 'homestead.app',
+        reloadOnRestart : true,
+        notify: true
     }
 
 };
-
 
 /**
  * Fetch a config item, using a string dot-notation.
